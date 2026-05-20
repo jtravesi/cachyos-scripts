@@ -63,8 +63,7 @@ cachyos-scripts/
 │
 ├── packages/              # Package auditing and management
 │   ├── export-pkglist.sh
-│   ├── diff-pkglist.sh
-│   └── aur-check-updates.sh
+│   └── diff-pkglist.sh
 │
 ├── logs/                  # Log analysis and cleanup
 │   ├── boot-errors.sh
@@ -179,7 +178,6 @@ CPU governor management and CachyOS-specific scheduler tooling.
 |---|---|---|
 | `export-pkglist.sh` | Export installed packages (official + AUR) with versions | CachyOS, Arch |
 | `diff-pkglist.sh` | Compare package lists between two systems or snapshots | CachyOS, Arch |
-| `aur-check-updates.sh` | Find outdated AUR packages and cross-reference known CVEs | CachyOS, Arch |
 
 ---
 

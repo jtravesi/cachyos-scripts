@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
 # full-upgrade.sh
-# Description : Full system upgrade with optional pre-upgrade
-#               snapshot (Btrfs only) and keyring refresh.
+# Description : Full system upgrade with optional pre-upgrade Btrfs
+#               snapshot, package list snapshot and keyring refresh.
 #               Detects package manager automatically.
 # Dependencies: pacman, paru or yay (optional), btrfs-progs (optional)
 # Compatibility: CachyOS, Arch Linux
@@ -46,6 +46,46 @@ try_snapshot() {
     fi
 }
 
+# --- Package list snapshot ---
+try_pkg_snapshot() {
+    local export_script="${SCRIPT_DIR}/../packages/export-pkglist.sh"
+
+    if [[ ! -x "$export_script" ]]; then
+        return 0
+    fi
+
+    confirm "Save a package list snapshot before upgrading?" || {
+        info "Package snapshot skipped."
+        return 0
+    }
+
+    local snap_file
+    snap_file=$(bash "$export_script" --format json 2>&1 \
+        | grep -oP '(?<=Snapshot saved to: ).*')
+    snap_file="${snap_file//$'\033'[*([0-9;])m/}"   # strip ANSI colors
+
+    if [[ -n "$snap_file" && -f "$snap_file" ]]; then
+        ok "Package snapshot saved: ${snap_file}"
+        # Store path for optional post-upgrade diff
+        PKG_SNAPSHOT_FILE="$snap_file"
+    else
+        warn "Package snapshot failed — continuing without it."
+    fi
+}
+
+# --- Post-upgrade diff ---
+try_pkg_diff() {
+    local diff_script="${SCRIPT_DIR}/../packages/diff-pkglist.sh"
+
+    [[ -z "${PKG_SNAPSHOT_FILE:-}" ]] && return 0
+    [[ ! -x "$diff_script" ]] && return 0
+
+    confirm "Show package diff (what changed during the upgrade)?" || return 0
+
+    bash "$diff_script" "$PKG_SNAPSHOT_FILE" --summary
+    info "Full diff: $(basename "$diff_script") ${PKG_SNAPSHOT_FILE}"
+}
+
 # --- Keyring refresh ---
 refresh_keyring() {
     info "Refreshing archlinux-keyring..."
@@ -83,8 +123,10 @@ main() {
     section "CachyOS Full Upgrade"
     detect_pkg_manager
     try_snapshot
+    try_pkg_snapshot
     refresh_keyring
     run_upgrade
+    try_pkg_diff
 }
 
 main "$@"
