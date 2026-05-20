@@ -53,7 +53,8 @@ cachyos-scripts/
 │   ├── net-summary.sh
 │   ├── open-connections.sh
 │   ├── wifi-manager.sh
-│   └── bandwidth-check.sh
+│   ├── bandwidth-check.sh
+│   └── vpn-check.sh
 │
 ├── snapshots/             # Btrfs snapshot management
 │   ├── list-snapshots.sh
@@ -158,6 +159,7 @@ CPU governor management and CachyOS-specific scheduler tooling.
 | `open-connections.sh` | Active network connections with owning process and user | Any Linux |
 | `wifi-manager.sh` | WiFi network management from CLI via nmcli | Any Linux (NetworkManager) |
 | `bandwidth-check.sh` | Bandwidth and latency test to configurable targets | Any Linux |
+| `vpn-check.sh` | Detect active VPN interfaces, daemons and DNS leak risk | Any Linux |
 
 ---
 
