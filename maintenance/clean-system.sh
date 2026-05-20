@@ -2,9 +2,9 @@
 # ============================================================
 # clean-system.sh
 # Description : System cleanup: orphan packages, pacman cache
-#               (keeps last 2 versions), systemd journal rotation.
+#               (keeps last 2 versions), log cleanup via clean-logs.sh.
 #               All destructive actions require confirmation.
-# Dependencies: pacman, paccache (pacman-contrib), journalctl
+# Dependencies: pacman, paccache (pacman-contrib), journalctl, find, du
 # Compatibility: CachyOS, Arch Linux
 # ============================================================
 
@@ -14,6 +14,7 @@ source "${SCRIPT_DIR}/../utils/common.sh"
 
 KEEP_VERSIONS="${KEEP_VERSIONS:-2}"       # Versions of each package to keep in cache
 MAX_LOG_SIZE="${MAX_LOG_SIZE:-500M}"      # Max journald log size to keep
+MAX_JOURNAL_DAYS="${MAX_JOURNAL_DAYS:-30}" # Max journal age in days
 
 # --- Orphan packages ---
 clean_orphans() {
@@ -130,25 +131,35 @@ clean_pkg_cache() {
     fi
 }
 
-# --- Journal logs ---
-clean_journal() {
-    section "System logs (journald)"
+# --- Log cleanup (delegates to logs/clean-logs.sh) ---
+clean_logs() {
+    section "System logs"
 
-    local current_size
-    current_size=$(journalctl --disk-usage 2>/dev/null | grep -oP '[\d.]+ [A-Z]+' | head -1)
-    info "Current journald usage: ${current_size:-unknown}"
-    info "Target size limit: ${MAX_LOG_SIZE}"
+    local clean_logs_script="${SCRIPT_DIR}/../logs/clean-logs.sh"
 
-    confirm "Rotate journald logs to a maximum of ${MAX_LOG_SIZE}?" || {
+    if [[ ! -x "$clean_logs_script" ]]; then
+        warn "logs/clean-logs.sh not found or not executable — skipping log cleanup."
+        return 0
+    fi
+
+    info "Delegating to clean-logs.sh (journal vacuum + /var/log cleanup)."
+    echo ""
+
+    # Run in dry-run first so the user sees what will be cleaned
+    bash "$clean_logs_script" \
+        --journal-size "$MAX_LOG_SIZE" \
+        --journal-days "$MAX_JOURNAL_DAYS"
+
+    echo ""
+    confirm "Apply log cleanup as shown above?" || {
         info "Log cleanup skipped."
         return 0
     }
 
-    if sudo journalctl --vacuum-size="$MAX_LOG_SIZE"; then
-        ok "Logs rotated successfully."
-    else
-        error "Error rotating journald logs."
-    fi
+    sudo bash "$clean_logs_script" \
+        --journal-size "$MAX_LOG_SIZE" \
+        --journal-days "$MAX_JOURNAL_DAYS" \
+        --confirm
 }
 
 # --- Summary ---
@@ -164,7 +175,7 @@ main() {
 
     clean_orphans
     clean_pkg_cache
-    clean_journal
+    clean_logs
     print_summary
 
     ok "Cleanup complete."
