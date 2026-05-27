@@ -33,6 +33,7 @@ cachyos-scripts/
 ├── security/              # Auditing and hardening
 │   ├── audit-suid.sh
 │   ├── audit-open-ports.sh
+│   ├── audit-firewall.sh
 │   └── hardening-check.sh
 │
 ├── performance/           # CPU, scheduler and I/O tuning
@@ -113,9 +114,10 @@ Auditing scripts written with an operational security mindset — not just check
 
 | Script | Description | Compatibility |
 |---|---|---|
-| `audit-suid.sh` | Find SUID/SGID binaries outside known standard paths | Any Linux |
-| `audit-open-ports.sh` | List listening ports with owning process and user | Any Linux |
-| `hardening-check.sh` | Hardening checklist: SSH config, PAM, umask, sysctl params, critical file permissions | Any Linux |
+| `audit-suid.sh` | Classifies SUID/SGID binaries as Expected/Unusual/Suspicious via baseline + pacman cross-check | Arch-based |
+| `audit-open-ports.sh` | List listening ports by exposure (local/LAN/public) with process, user, package and firewall coverage | Arch-based |
+| `audit-firewall.sh` | Audit firewall (ufw/firewalld/nftables/iptables): stale rules, IPv6 parity, anti-patterns | Any Linux |
+| `hardening-check.sh` | 30+ pragmatic checks: SSH, sysctl, file perms, PAM, mounts, AppArmor, coredumps, arch-audit CVE scan | Any systemd Linux |
 
 ---
 
