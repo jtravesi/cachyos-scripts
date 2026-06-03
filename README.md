@@ -48,7 +48,8 @@ cachyos-scripts/
 ├── disk/                  # Disk and filesystem tools
 │   ├── disk-usage.sh
 │   ├── smart-check.sh
-│   └── mount-manager.sh
+│   ├── mount-manager.sh
+│   └── disk-formatter.sh
 │
 ├── network/               # Network diagnostics and management
 │   ├── net-summary.sh
@@ -148,7 +149,8 @@ CPU governor management and CachyOS-specific scheduler tooling.
 |---|---|---|
 | `disk-usage.sh` | Disk usage summary by partition and top-N directories | Any Linux |
 | `smart-check.sh` | SMART status for all disks with bad sector alerts | Any Linux |
-| `mount-manager.sh` | List, mount and unmount devices with filesystem detection | Any Linux |
+| `mount-manager.sh` | Mount/unmount devices and manage persistent fstab entries (UUID-based, with backups) | Any Linux |
+| `disk-formatter.sh` | Format devices, change labels and partition disks (quick or cfdisk); system disk protected | Any Linux |
 
 ---
 
