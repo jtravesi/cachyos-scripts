@@ -113,12 +113,12 @@ Intelligent system upkeep beyond basic `pacman` usage.
 
 Auditing scripts written with an operational security mindset — not just checklists.
 
-| Script | Description | Compatibility |
-|---|---|---|
-| `audit-suid.sh` | Classifies SUID/SGID binaries as Expected/Unusual/Suspicious via baseline + pacman cross-check | Arch-based |
-| `audit-open-ports.sh` | List listening ports by exposure (local/LAN/public) with process, user, package and firewall coverage | Arch-based |
-| `audit-firewall.sh` | Audit firewall (ufw/firewalld/nftables/iptables): stale rules, IPv6 parity, anti-patterns | Any Linux |
-| `hardening-check.sh` | 30+ pragmatic checks: SSH, sysctl, file perms, PAM, mounts, AppArmor, coredumps, arch-audit CVE scan | Any systemd Linux |
+| Script                | Description                                                                                           | Compatibility     |
+| -----------------------| -------------------------------------------------------------------------------------------------------| -------------------|
+| `audit-suid.sh`       | Classifies SUID/SGID binaries as Expected/Unusual/Suspicious via baseline + pacman cross-check        | Arch-based        |
+| `audit-open-ports.sh` | List listening ports by exposure (local/LAN/public) with process, user, package and firewall coverage | Arch-based        |
+| `audit-firewall.sh`   | Audit firewall (ufw/firewalld/nftables/iptables): stale rules, IPv6 parity, anti-patterns             | Any Linux         |
+| `hardening-check.sh`  | 30+ pragmatic checks: SSH, sysctl, file perms, PAM, mounts, AppArmor, coredumps, arch-audit CVE scan  | Any systemd Linux |
 
 ---
 
@@ -126,31 +126,31 @@ Auditing scripts written with an operational security mindset — not just check
 
 CPU governor management and CachyOS-specific scheduler tooling.
 
-| Script | Description | Compatibility |
-|---|---|---|
-| `set-cpu-governor.sh` | Switch CPU governor with hardware auto-detection | Any Linux |
-| `scx-scheduler-switch.sh` | Manage and switch between scx_* schedulers (BORE, LAVD, etc.) | CachyOS |
-| `io-latency-check.sh` | Quick I/O latency benchmark per device | Any Linux |
+| Script                    | Description                                                   | Compatibility |
+| ---------------------------| ---------------------------------------------------------------| ---------------|
+| `set-cpu-governor.sh`     | Switch CPU governor with hardware auto-detection              | Any Linux     |
+| `scx-scheduler-switch.sh` | Manage and switch between scx_* schedulers (BORE, LAVD, etc.) | CachyOS       |
+| `io-latency-check.sh`     | Quick I/O latency benchmark per device                        | Any Linux     |
 
 ---
 
 ### 🐧 Kernel
 
-| Script | Description | Compatibility |
-|---|---|---|
-| `list-kernels.sh` | List installed kernels, highlight active and next-boot kernel | CachyOS, Arch |
-| `switch-kernel.sh` | Set default kernel in systemd-boot or GRUB | CachyOS, Arch |
+| Script             | Description                                                   | Compatibility |
+| --------------------| ---------------------------------------------------------------| ---------------|
+| `list-kernels.sh`  | List installed kernels, highlight active and next-boot kernel | CachyOS, Arch |
+| `switch-kernel.sh` | Set default kernel in systemd-boot or GRUB                    | CachyOS, Arch |
 
 ---
 
 ### 💾 Disk
 
-| Script | Description | Compatibility |
-|---|---|---|
-| `disk-usage.sh` | Disk usage summary by partition and top-N directories | Any Linux |
-| `smart-check.sh` | SMART status for all disks with bad sector alerts | Any Linux |
-| `mount-manager.sh` | Mount/unmount devices and manage persistent fstab entries (UUID-based, with backups) | Any Linux |
-| `disk-formatter.sh` | Format devices, change labels and partition disks (quick or cfdisk); system disk protected | Any Linux |
+| Script              | Description                                                                                | Compatibility |
+| ---------------------| --------------------------------------------------------------------------------------------| ---------------|
+| `disk-usage.sh`     | Disk usage summary by partition and top-N directories                                      | Any Linux     |
+| `smart-check.sh`    | SMART status for all disks with bad sector alerts                                          | Any Linux     |
+| `mount-manager.sh`  | Mount/unmount devices and manage persistent fstab entries (UUID-based, with backups)       | Any Linux     |
+| `disk-formatter.sh` | Format devices, change labels and partition disks (quick or cfdisk); system disk protected | Any Linux     |
 
 ---
 
