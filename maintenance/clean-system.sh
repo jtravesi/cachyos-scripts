@@ -8,7 +8,7 @@
 # Compatibility: CachyOS, Arch Linux
 # ============================================================
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=../utils/common.sh
 source "${SCRIPT_DIR}/../utils/common.sh"
 

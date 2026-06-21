@@ -72,12 +72,12 @@ parse_snapshot() {
         if command -v jq &>/dev/null; then
             jq -r '(.official[],.aur[]) | [.name, .version, .repo] | @tsv' "$file" 2>/dev/null
         else
-            # Fallback: naive grep-based parse for simple JSON
-            grep -oP '"name":\s*"\K[^"]+' "$file" > /tmp/_names.$$
-            grep -oP '"version":\s*"\K[^"]+' "$file" > /tmp/_versions.$$
-            grep -oP '"repo":\s*"\K[^"]+' "$file" > /tmp/_repos.$$
-            paste /tmp/_names.$$ /tmp/_versions.$$ /tmp/_repos.$$
-            rm -f /tmp/_names.$$ /tmp/_versions.$$ /tmp/_repos.$$
+            # Fallback: naive grep-based parse for simple JSON.
+            # Process substitution avoids predictable /tmp temp files.
+            paste \
+                <(grep -oP '"name":\s*"\K[^"]+'    "$file") \
+                <(grep -oP '"version":\s*"\K[^"]+' "$file") \
+                <(grep -oP '"repo":\s*"\K[^"]+'    "$file")
         fi
     else
         # Text format: skip comment lines (#), section headers (##, ───),

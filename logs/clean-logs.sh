@@ -143,8 +143,12 @@ do_varlog_cleanup() {
 
     local removed=0
     while IFS= read -r f; do
-        rm -f "$f" 2>/dev/null && (( removed++ ))
-        info "Removed: ${f}"
+        if rm -f "$f" 2>/dev/null; then
+            removed=$((removed + 1))
+            info "Removed: ${f}"
+        else
+            warn "Could not remove: ${f}"
+        fi
     done < <(find /var/log -type f -mtime +"$MAX_LOG_AGE_DAYS" \
         ! -name "*.gz.tmp" 2>/dev/null | sort)
 
