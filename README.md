@@ -103,9 +103,24 @@ Intelligent system upkeep beyond basic `pacman` usage.
 
 | Script | Description | Compatibility |
 |---|---|---|
-| `full-upgrade.sh` | Full system upgrade with optional Btrfs snapshot before upgrading | CachyOS, Arch |
+| `full-upgrade.sh` | Full system upgrade with optional Btrfs snapshot, package diff and firmware updates (fwupd/LVFS) | CachyOS, Arch |
 | `clean-system.sh` | Remove orphans, trim pacman cache, rotate logs with configurable limits | Arch-based |
 | `check-failed-services.sh` | List failed systemd services with suggested actions | Any systemd Linux |
+
+**Firmware updates** (`full-upgrade.sh`) run after the package upgrade, through `fwupd` and the
+LVFS. The stage is optional and asks before doing anything; it refuses to flash on a battery
+below 30%, warns when the ESP is too full to stage a UEFI capsule update, lists every pending
+update with its version change, and lets you pick which devices to flash (`jq` required for the
+per-device menu). Nothing is uploaded to LVFS.
+
+```bash
+./maintenance/full-upgrade.sh                 # packages, then ask about firmware
+./maintenance/full-upgrade.sh --no-firmware   # packages only
+./maintenance/full-upgrade.sh --firmware-only # firmware only
+```
+
+> **Note:** a firmware flash is performed by the device itself and cannot be rolled back by a
+> Btrfs snapshot. Most updates only finish after a reboot (some need a full power off).
 
 ---
 
