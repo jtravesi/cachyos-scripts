@@ -116,6 +116,13 @@ check_packages() {
     local cache
     cache=$(du -sh /var/cache/pacman/pkg 2>/dev/null | awk '{print $1}')
     [[ -n "$cache" ]] && result INFO "Pacman cache" "${cache} (clean with paccache/clean-system.sh)"
+
+    # AUR helper build dirs (yay/paru): paccache never looks in there.
+    local aur_dir aur_size
+    while IFS= read -r aur_dir; do
+        aur_size=$(du -sh "$aur_dir" 2>/dev/null | awk '{print $1}')
+        [[ -n "$aur_size" ]] && result INFO "AUR cache" "${aur_size} in ${aur_dir} (clean with clean-system.sh)"
+    done < <(aur_cache_dirs)
 }
 
 check_filesystems() {

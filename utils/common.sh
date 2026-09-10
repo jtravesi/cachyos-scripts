@@ -101,6 +101,45 @@ detect_fs() {
     findmnt -n -o FSTYPE "$mount" 2>/dev/null || echo "unknown"
 }
 
+# --- AUR helper cache directories ---
+# Prints each existing AUR helper cache directory, one per line: yay's buildDir
+# and paru's CloneDir, read from their config files or falling back to their
+# defaults. Under sudo $HOME is root's, so the invoking user's home is used.
+aur_cache_dirs() {
+    local home="$HOME" cache config dir file seen=""
+    local -a found=()
+
+    if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
+        home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    fi
+    cache="${XDG_CACHE_HOME:-${home}/.cache}"
+    config="${XDG_CONFIG_HOME:-${home}/.config}"
+
+    # yay: "buildDir" in config.json, default <cache>/yay.
+    dir=""
+    file="${config}/yay/config.json"
+    [[ -r "$file" ]] && dir=$(sed -n 's/.*"buildDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+    found+=("${dir:-${cache}/yay}")
+
+    # paru: CloneDir from the first paru.conf found (paru reads only one),
+    # default <cache>/paru/clone.
+    dir=""
+    for file in "${config}/paru/paru.conf" /etc/paru.conf; do
+        [[ -r "$file" ]] || continue
+        dir=$(sed -n 's/^[[:space:]]*CloneDir[[:space:]]*=[[:space:]]*//p' "$file" | tail -n 1)
+        break
+    done
+    dir="${dir/#\~/$home}"
+    found+=("${dir:-${cache}/paru/clone}")
+
+    for dir in "${found[@]}"; do
+        dir="${dir%/}"
+        [[ -d "$dir" && "$seen" != *"|${dir}|"* ]] || continue
+        seen+="|${dir}|"
+        printf '%s\n' "$dir"
+    done
+}
+
 # --- Root check ---
 require_root() {
     [[ "$EUID" -eq 0 ]] || fatal "This script must be run as root (sudo)."

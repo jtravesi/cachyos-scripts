@@ -104,7 +104,7 @@ Intelligent system upkeep beyond basic `pacman` usage.
 | Script | Description | Compatibility |
 |---|---|---|
 | `full-upgrade.sh` | Full system upgrade with optional Btrfs snapshot, package diff and firmware updates (fwupd/LVFS) | CachyOS, Arch |
-| `clean-system.sh` | Remove orphans, trim pacman cache, rotate logs with configurable limits | Arch-based |
+| `clean-system.sh` | Remove orphans, trim pacman and AUR helper (yay/paru) caches, rotate logs with configurable limits | Arch-based |
 | `check-failed-services.sh` | List failed systemd services with suggested actions | Any systemd Linux |
 
 **Firmware updates** (`full-upgrade.sh`) run after the package upgrade, through `fwupd` and the
