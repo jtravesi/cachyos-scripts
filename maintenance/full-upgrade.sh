@@ -2,8 +2,9 @@
 # ============================================================
 # full-upgrade.sh
 # Description : Full system upgrade with optional pre-upgrade Btrfs
-#               snapshot, package list snapshot, keyring refresh and
-#               firmware updates via fwupd/LVFS.
+#               snapshot, package list snapshot, keyring refresh, AUR
+#               update review (security/aur-gate.sh) and firmware
+#               updates via fwupd/LVFS.
 #               Detects package manager automatically.
 # Dependencies: pacman, paru or yay (optional), btrfs-progs (optional),
 #               fwupd (optional, firmware stage), jq (optional, per-device
@@ -20,6 +21,7 @@ SNAPSHOT_DIR="${SNAPSHOT_DIR:-/.snapshots}"
 
 PACKAGES_ENABLED=true       # false with --firmware-only
 FIRMWARE_MODE="ask"         # ask | always | never
+AUR_SCOPE=""                # "--repo" when this run skips AUR updates
 
 # Refuse to flash below this battery level when running without AC power.
 FW_MIN_BATTERY="${FW_MIN_BATTERY:-30}"
@@ -174,14 +176,48 @@ warn_partial_upgrade() {
     warn "Re-run this script (or '${PKG_MANAGER} -Syu') to finish."
 }
 
+# --- AUR update review ---
+# Runs aur-gate.sh over the pending AUR updates before anything is built, so a
+# risky update can be skipped with a repo-only upgrade instead of being stopped
+# halfway through the transaction. Read-only: it does not sync the databases.
+try_aur_preflight() {
+    [[ "$PKG_MANAGER" == pacman ]] && return 0
+    local gate="${SCRIPT_DIR}/../security/aur-gate.sh"
+    [[ -f "$gate" ]] || return 0
+
+    section "AUR update review"
+    local rc reply
+    bash "$gate" pending
+    rc=$?
+
+    case $rc in
+        0) ;;
+        1) info "Some AUR updates need a look — see the notes above." ;;
+        2)
+            warn "At least one AUR update was flagged as dangerous."
+            echo -en "${WARN} [r] upgrade repo packages only  [c] continue anyway  [a] abort  (default: r): "
+            read -r reply
+            case "${reply,,}" in
+                c) info "Continuing. If aur-gate is installed as makepkg it asks again before each flagged build." ;;
+                a) info "Upgrade cancelled."; exit 0 ;;
+                *) AUR_SCOPE="--repo"; info "AUR updates skipped for this run." ;;
+            esac
+            ;;
+        *)
+            warn "AUR update review failed (exit ${rc})."
+            confirm "Continue with the upgrade anyway?" || exit 1
+            ;;
+    esac
+}
+
 # --- Upgrade ---
 run_upgrade() {
     section "Upgrading system with ${PKG_MANAGER}"
 
     local cmd
     case "$PKG_MANAGER" in
-        paru)   cmd="paru -Syu" ;;
-        yay)    cmd="yay -Syu" ;;
+        paru)   cmd="paru -Syu${AUR_SCOPE:+ $AUR_SCOPE}" ;;
+        yay)    cmd="yay -Syu${AUR_SCOPE:+ $AUR_SCOPE}" ;;
         pacman) cmd="sudo pacman -Syu" ;;
     esac
 
@@ -559,6 +595,7 @@ main() {
 
     if $PACKAGES_ENABLED; then
         detect_pkg_manager
+        try_aur_preflight
         try_snapshot
         try_pkg_snapshot
         # A cancelled upgrade leaves nothing to diff, but the firmware stage

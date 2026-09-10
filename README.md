@@ -34,7 +34,8 @@ cachyos-scripts/
 │   ├── audit-suid.sh
 │   ├── audit-open-ports.sh
 │   ├── audit-firewall.sh
-│   └── hardening-check.sh
+│   ├── hardening-check.sh
+│   └── aur-gate.sh
 │
 ├── performance/           # CPU, scheduler and I/O tuning
 │   ├── set-cpu-governor.sh
@@ -134,6 +135,29 @@ Auditing scripts written with an operational security mindset — not just check
 | `audit-open-ports.sh` | List listening ports by exposure (local/LAN/public) with process, user, package and firewall coverage | Arch-based        |
 | `audit-firewall.sh`   | Audit firewall (ufw/firewalld/nftables/iptables): stale rules, IPv6 parity, anti-patterns             | Any Linux         |
 | `hardening-check.sh`  | 30+ pragmatic checks: SSH, sysctl, file perms, PAM, mounts, AppArmor, coredumps, arch-audit CVE scan  | Any systemd Linux |
+| `aur-gate.sh`         | Pre-build gate for AUR packages (as yay's makepkg): maintainer changes, orphans, repo→AUR switches, known-compromised list, risky lines added since the installed version | Arch-based |
+
+**AUR gate** (`aur-gate.sh`) reviews every AUR build before `makepkg` runs any of the PKGBUILD. It was
+written after the June 2026 "Atomic Arch" campaign, in which orphaned AUR packages were adopted and
+changed to `npm install` a credential stealer during the build.
+
+```bash
+./security/aur-gate.sh install         # yay builds through the gate from now on
+./security/aur-gate.sh check <pkg>     # review a package before installing it
+./security/aur-gate.sh pending         # review pending AUR updates (full-upgrade.sh runs this)
+```
+
+- **Red** — the build stops until you type `yes`: maintainer changed since your last build, a package
+  switching from a signed repo build to the AUR, a package on the compromised list, or new lines that
+  install a named npm/bun/pip package, pipe a download into a shell, decode embedded data, or reach
+  the network from an `.install` scriptlet.
+- **Yellow** — shown, Enter continues: orphaned or very new package, new download origin, disabled
+  checksums, changed `.install`, generic `npm install`, `eval`, `sudo`.
+- For updates only the lines added since the installed version are checked, so long-standing build
+  tricks don't raise the alarm on every update.
+
+> Heuristics raise the bar against mass campaigns; they don't prove a package safe. `-bin` packages
+> ship binaries that no pattern can look inside.
 
 ---
 
