@@ -140,6 +140,35 @@ aur_cache_dirs() {
     done
 }
 
+# --- Patch level ---
+# Prints the days since the last full system upgrade logged in pacman.log,
+# or nothing if none is logged.
+last_upgrade_days() {
+    local ts epoch
+    ts=$(grep -F 'starting full system upgrade' /var/log/pacman.log 2>/dev/null \
+        | tail -n 1 | sed -n 's/^\[\([^]]*\)\].*/\1/p')
+    [[ -n "$ts" ]] || return 0
+    epoch=$(date -d "$ts" +%s 2>/dev/null) || return 0
+    echo $(( ($(date +%s) - epoch) / 86400 ))
+}
+
+# Prints one line per visible process still running code that an upgrade
+# replaced on disk: its binary, or a shared library it mapped, under /usr is
+# now "(deleted)". Such a process stays on the old code until restarted.
+# Prints the systemd unit for system services, otherwise the command name.
+# Without root, only the caller's own processes are visible.
+stale_procs() {
+    local dir exe unit
+    for dir in /proc/[0-9]*; do
+        exe=$(readlink "${dir}/exe" 2>/dev/null) || continue
+        [[ "$exe" == /usr/*" (deleted)" ]] \
+            || grep -qE ' /usr/[^ ]*\.so[.0-9]* \(deleted\)$' "${dir}/maps" 2>/dev/null \
+            || continue
+        unit=$(sed -nE 's#^0::/system\.slice/(.*/)?([^/]+\.service)$#\2#p' "${dir}/cgroup" 2>/dev/null)
+        if [[ -n "$unit" ]]; then echo "$unit"; else cat "${dir}/comm" 2>/dev/null; fi
+    done
+}
+
 # --- Root check ---
 require_root() {
     [[ "$EUID" -eq 0 ]] || fatal "This script must be run as root (sudo)."

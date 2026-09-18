@@ -3,10 +3,13 @@
 # hardening-check.sh
 # Description : Pragmatic security hardening audit. Reviews SSH config,
 #               kernel sysctl parameters, critical file permissions,
-#               PAM/authentication policy, mount flags and miscellaneous
-#               security posture (AppArmor, core dumps, CVE scan).
+#               PAM/authentication policy, mount flags, miscellaneous
+#               security posture (AppArmor, core dumps) and patch level
+#               (update age, pending updates, reboot/restarts needed,
+#               arch-audit CVE scan).
 #               Read-only — never modifies the system.
-# Dependencies: sysctl, stat, findmnt, awk, grep
+# Dependencies: sysctl, stat, findmnt, awk, grep; checkupdates
+#               (pacman-contrib), arch-audit, curl, jq (optional)
 # Compatibility: Any systemd Linux (some checks Arch-specific)
 # ============================================================
 
@@ -27,7 +30,8 @@ Options:
     -h, --help       Show this help
 
 Runs a pragmatic hardening audit over SSH, sysctl, file permissions,
-PAM, mounts and miscellaneous posture (AppArmor, core dumps, CVEs).
+PAM, mounts, miscellaneous posture (AppArmor, core dumps) and patch
+level (updates, pending reboot/restarts, CVEs).
 Read-only. Run as root for full coverage.
 EOF
 }
@@ -460,87 +464,184 @@ check_misc() {
     else
         report WARN "Custom core_pattern: ${cp}" "$cp" "disabled or systemd-coredump with Storage=none"
     fi
+}
 
-    # CVE scan with arch-audit (optional)
-    if command -v arch-audit &>/dev/null; then
-        local audit_out
-        # Format: name | fixed-version | severity | type | CVEs
-        audit_out=$(arch-audit -f "%n|%v|%s|%t|%c" 2>/dev/null || true)
+# --- Section 7: Updates & CVEs ---
 
-        if [[ -z "$audit_out" ]]; then
-            report OK "arch-audit: no known vulnerabilities in installed packages" "0 CVEs" "0"
-        else
-            local upgradable=() pending=()
-            local pkg fix sev vtype cves line
-            while IFS= read -r line; do
-                [[ -z "$line" ]] && continue
-                IFS='|' read -r pkg fix sev vtype cves <<<"$line"
-                if [[ -n "$fix" ]]; then
-                    upgradable+=("${pkg}|${fix}|${sev}|${vtype}|${cves}")
-                else
-                    pending+=("${pkg}|${sev}|${vtype}|${cves}")
-                fi
-            done <<< "$audit_out"
+# Arch security tracker data, fetched once per run by check_arch_audit.
+AUDIT_SOURCE="https://security.archlinux.org/all.json"
+AUDIT_DATA=""
+cleanup() { [[ -z "$AUDIT_DATA" ]] || rm -f "$AUDIT_DATA"; }
+trap cleanup EXIT
 
-            local total=$(( ${#upgradable[@]} + ${#pending[@]} ))
-            local recommend status
-            if [[ ${#upgradable[@]} -gt 0 ]]; then
-                status=FAIL
-                recommend="Run 'sudo pacman -Syu' to apply ${#upgradable[@]} confirmed fix(es). Other entries may also be fixed by pacman even if AVG hasn't confirmed."
-            else
-                # All pending — user can't act, downgrade to WARN
-                status=WARN
-                recommend="No actionable fixes (all entries pending upstream). Re-check periodically with 'arch-audit'."
-            fi
-            report "$status" "arch-audit: ${total} packages with known CVEs (AVG-confirmed fix: ${#upgradable[@]}, no fix-version yet: ${#pending[@]})" \
-                "${total} affected" "0" "$recommend"
+# Color for an arch-audit severity ("High", "Medium", "Low", ...).
+sev_color() {
+    case "${1,,}" in
+        critical*|high*) echo "$RED" ;;
+        medium*)         echo "$YELLOW" ;;
+        low*)            echo "$CYAN" ;;
+        *)               echo "$RESET" ;;
+    esac
+}
 
-            # Color severity helper — arch-audit returns "High risk", "Medium risk", "Low risk"
-            sev_color() {
-                case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
-                    critical*|high*) echo "$RED" ;;
-                    medium*)         echo "$YELLOW" ;;
-                    low*)            echo "$CYAN" ;;
-                    *)               echo "$RESET" ;;
-                esac
-            }
-
-            local cap=20
-            if [[ ${#upgradable[@]} -gt 0 ]]; then
-                echo -e "        ${BOLD}${GREEN}Fix version confirmed in AVG${RESET} (${#upgradable[@]}):"
-                local i=0 entry sc
-                for entry in "${upgradable[@]}"; do
-                    IFS='|' read -r pkg fix sev vtype cves <<<"$entry"
-                    sc=$(sev_color "$sev")
-                    printf "          ${GREEN}↑${RESET} %-18s → %-12s ${sc}[%-8s]${RESET} ${YELLOW}%s${RESET}\n            %s\n" \
-                        "$pkg" "$fix" "$sev" "$vtype" "$cves"
-                    i=$((i+1))
-                    if [[ $i -ge $cap && ${#upgradable[@]} -gt $cap ]]; then
-                        echo "          ... and $(( ${#upgradable[@]} - cap )) more"
-                        break
-                    fi
-                done
-            fi
-            if [[ ${#pending[@]} -gt 0 ]]; then
-                echo -e "        ${BOLD}${YELLOW}No fix-version in AVG yet${RESET} (${#pending[@]}) ${CYAN}— verify with 'pacman -Qu <pkg>'${RESET}:"
-                local i=0 entry sc
-                for entry in "${pending[@]}"; do
-                    IFS='|' read -r pkg sev vtype cves <<<"$entry"
-                    sc=$(sev_color "$sev")
-                    printf "          ${YELLOW}·${RESET} %-18s                 ${sc}[%-8s]${RESET} ${YELLOW}%s${RESET}\n            %s\n" \
-                        "$pkg" "$sev" "$vtype" "$cves"
-                    i=$((i+1))
-                    if [[ $i -ge $cap && ${#pending[@]} -gt $cap ]]; then
-                        echo "          ... and $(( ${#pending[@]} - cap )) more"
-                        break
-                    fi
-                done
-            fi
+# Usage: list_advisories MARK "pkg|fix|severity|type|CVEs"...  (capped at 20)
+list_advisories() {
+    local mark="$1"; shift
+    local cap=20 i=0 entry pkg fix sev vtype cves arrow
+    for entry in "$@"; do
+        if (( i++ == cap )); then
+            echo "          ... and $(( $# - cap )) more"
+            break
         fi
-    else
+        IFS='|' read -r pkg fix sev vtype cves <<< "$entry"
+        # The arrow stays out of the padded field: printf pads bytes, not columns.
+        arrow="${fix:+→}"
+        printf "          %b %-18s %s %-12s $(sev_color "$sev")[%-8s]${RESET} ${YELLOW}%s${RESET}\n            %s\n" \
+            "$mark" "$pkg" "${arrow:- }" "$fix" "$sev" "$vtype" "$cves"
+    done
+}
+
+# CVE scan against the Arch security tracker. A published fix that is not
+# installed is a FAIL. Open advisories without a fix are mostly stale: the
+# tracker has many entries that were never closed after upstream shipped a
+# fix. One only counts while the installed upstream version is still the
+# affected one; the rest are listed by name as likely stale.
+check_arch_audit() {
+    if ! command -v arch-audit &>/dev/null; then
         report SKIP "arch-audit not installed (optional CVE scan)" "" "" \
-            "Install with: pacman -S arch-audit (or AUR) for CVE scanning"
+            "Install with: pacman -S arch-audit"
+        return
     fi
+
+    # Fetch the tracker data once: arch-audit reads it from the file, and the
+    # classification needs its "affected" versions, which arch-audit does not
+    # print. A failed fetch must never read as "no CVEs".
+    local out
+    AUDIT_DATA=$(mktemp) || return
+    if ! curl -fsSL --max-time 30 "$AUDIT_SOURCE" -o "$AUDIT_DATA" 2>/dev/null \
+        || ! out=$(arch-audit --source "$AUDIT_DATA" -f "%n|%v|%s|%t|%c" 2>/dev/null); then
+        report SKIP "arch-audit: tracker data unavailable (offline?) — CVE scan not performed"
+        return
+    fi
+
+    # Affected versions of the advisories still open without a fix, per package.
+    local -A open_aff=()
+    local pkg aff
+    if command -v jq &>/dev/null; then
+        while IFS='|' read -r pkg aff; do
+            open_aff[$pkg]+="${aff} "
+        done < <(jq -r '.[] | select(.fixed == null and .status != "Fixed" and .status != "Not affected")
+                        | .affected as $a | .packages[] | "\(.)|\($a)"' "$AUDIT_DATA" 2>/dev/null)
+    fi
+
+    local fixable=() unfixed=() stale=()
+    local line fix sev vtype cves inst verdict
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        IFS='|' read -r pkg fix sev vtype cves <<< "$line"
+        line="${pkg}|${fix}|${sev% risk}|${vtype}|${cves}"
+        if [[ -n "$fix" ]]; then
+            fixable+=("$line")
+            continue
+        fi
+        # Without affected versions (no jq) an entry cannot be classified,
+        # so it stays open.
+        verdict=unfixed
+        if [[ -n "${open_aff[$pkg]:-}" ]]; then
+            verdict=stale
+            inst=$(pacman -Q "$pkg" 2>/dev/null | awk '{print $2}')
+            for aff in ${open_aff[$pkg]}; do
+                (( $(vercmp "${inst%-*}" "${aff%-*}") <= 0 )) && verdict=unfixed
+            done
+        fi
+        if [[ "$verdict" == unfixed ]]; then unfixed+=("$line"); else stale+=("$pkg"); fi
+    done <<< "$out"
+
+    if (( ${#fixable[@]} )); then
+        report FAIL "arch-audit: ${#fixable[@]} package(s) with a published fix not installed" \
+            "${#fixable[@]}" "0" \
+            "Run 'sudo pacman -Syu'. If nothing updates, the fix has not reached your repos yet."
+        list_advisories "${GREEN}↑${RESET}" "${fixable[@]}"
+    fi
+    if (( ${#unfixed[@]} )); then
+        local hint="No fix released yet — follow upstream, and mitigate or remove the package if exposed."
+        command -v jq &>/dev/null || hint="Install jq to filter out stale tracker entries. ${hint}"
+        report WARN "arch-audit: ${#unfixed[@]} package(s) with open advisories and no fix" \
+            "${#unfixed[@]}" "0" "$hint"
+        list_advisories "${YELLOW}·${RESET}" "${unfixed[@]}"
+    fi
+    if (( ${#fixable[@]} + ${#unfixed[@]} == 0 )); then
+        report OK "arch-audit: no actionable advisories (tracker coverage is partial)" "0" "0"
+    fi
+    if (( ${#stale[@]} )); then
+        echo -e "        ${CYAN}${#stale[@]} more likely stale (upstream released newer versions since the advisory):${RESET}"
+        fold -s -w 64 <<< "${stale[*]}" | sed 's/^/          /'
+    fi
+
+    # The tracker only follows Arch's own kernels.
+    local kbase
+    kbase=$(cat "/usr/lib/modules/$(uname -r)/pkgbase" 2>/dev/null)
+    if [[ -n "$kbase" ]] && ! grep -qF "\"${kbase}\"" "$AUDIT_DATA"; then
+        echo -e "        ${CYAN}Kernel ${kbase} is not covered by the tracker — keeping it updated is what protects it.${RESET}"
+    fi
+}
+
+check_updates() {
+    start_section "Updates & CVEs"
+
+    # On a rolling release nearly every CVE is fixed by updating, so being
+    # current, and running the updated code, matters more than any tracker.
+    local days status n update_hint="Run 'sudo pacman -Syu' (or maintenance/full-upgrade.sh)"
+    days=$(last_upgrade_days)
+    if [[ -z "$days" ]]; then
+        report SKIP "Last full upgrade unknown (none logged in /var/log/pacman.log)"
+    elif (( days <= 14 )); then
+        report OK "Last full upgrade ${days} day(s) ago" "${days} days" "≤ 14 days"
+    else
+        status=WARN
+        (( days > 30 )) && status=FAIL
+        report "$status" "Last full upgrade ${days} days ago" "${days} days" "≤ 14 days" "$update_hint"
+    fi
+
+    # Pending updates, against a freshly synced temporary copy of the sync db.
+    if command -v checkupdates &>/dev/null; then
+        local upd rc
+        upd=$(timeout 60 checkupdates --nocolor 2>/dev/null); rc=$?
+        case "$rc" in
+            0) n=$(grep -c . <<< "$upd")
+               report WARN "${n} pending update(s)" "$n" "0" "$update_hint" ;;
+            2) report OK "No pending updates (checked against the mirrors)" "0" "0" ;;
+            *) report SKIP "Pending updates unknown (checkupdates failed — offline?)" ;;
+        esac
+    else
+        report SKIP "checkupdates not installed" "" "" "Install pacman-contrib to check pending updates"
+    fi
+
+    # An upgrade removes the running kernel's module tree.
+    local kver
+    kver=$(uname -r)
+    if [[ -d "/usr/lib/modules/${kver}" ]]; then
+        report OK "Running kernel ${kver} is the installed one" "$kver" "installed kernel"
+    else
+        report WARN "Running kernel ${kver} was replaced by an upgrade" "$kver" "installed kernel" \
+            "Reboot to run the patched kernel"
+    fi
+
+    # Processes still on code an upgrade replaced (old openssl, glibc, ...).
+    local stale scope=""
+    (( EUID == 0 )) || scope=" (own processes only — run as root to include services)"
+    stale=$(stale_procs)
+    if [[ -z "$stale" ]]; then
+        report OK "No processes running replaced binaries/libraries${scope}"
+    else
+        n=$(grep -c . <<< "$stale")
+        report WARN "${n} process(es) running replaced binaries/libraries${scope}" "$n" "0" \
+            "Restart them ('systemctl restart <unit>' for services) or reboot"
+        sort <<< "$stale" | uniq -c | sort -rn | head -n 20 \
+            | sed -E 's/^ *1 (.*)$/          · \1/; s/^ *([0-9]+) (.*)$/          · \2 (×\1)/'
+    fi
+
+    check_arch_audit
 }
 
 # --- Main ---
@@ -558,6 +659,7 @@ check_perms
 check_pam
 check_mounts
 check_misc
+check_updates
 
 # --- Summary ---
 
@@ -569,7 +671,7 @@ fail_all=0
 warn_all=0
 skip_all=0
 
-for sec in "SSH" "Kernel / sysctl" "File permissions" "PAM / Authentication" "Mounts" "Misc"; do
+for sec in "SSH" "Kernel / sysctl" "File permissions" "PAM / Authentication" "Mounts" "Misc" "Updates & CVEs"; do
     local_total="${SECTION_TOTAL[$sec]:-0}"
     local_pass="${SECTION_PASS[$sec]:-0}"
     local_fail="${SECTION_FAIL[$sec]:-0}"

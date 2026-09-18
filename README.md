@@ -134,7 +134,7 @@ Auditing scripts written with an operational security mindset — not just check
 | `audit-suid.sh`       | Classifies SUID/SGID binaries as Expected/Unusual/Suspicious via baseline + pacman cross-check        | Arch-based        |
 | `audit-open-ports.sh` | List listening ports by exposure (local/LAN/public) with process, user, package and firewall coverage | Arch-based        |
 | `audit-firewall.sh`   | Audit firewall (ufw/firewalld/nftables/iptables): stale rules, IPv6 parity, anti-patterns             | Any Linux         |
-| `hardening-check.sh`  | 30+ pragmatic checks: SSH, sysctl, file perms, PAM, mounts, AppArmor, coredumps, arch-audit CVE scan  | Any systemd Linux |
+| `hardening-check.sh`  | 30+ pragmatic checks: SSH, sysctl, file perms, PAM, mounts, AppArmor, coredumps, patch level (update age, pending updates, reboot/restarts needed) and an arch-audit CVE scan that filters stale tracker entries | Any systemd Linux |
 | `aur-gate.sh`         | Pre-build gate for AUR packages (as yay's makepkg): maintainer changes, orphans, repo→AUR switches, known-compromised list, risky lines added since the installed version | Arch-based |
 
 **AUR gate** (`aur-gate.sh`) reviews every AUR build before `makepkg` runs any of the PKGBUILD. It was

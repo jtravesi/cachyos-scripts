@@ -9,7 +9,8 @@
 #               Never modifies anything. Runs without root, but
 #               root (sudo) unlocks SMART and a few extra checks.
 # Dependencies: coreutils, systemctl, pacman, ss, ip, df, free,
-#               journalctl; smartctl (optional, for SMART)
+#               journalctl; smartctl (optional, for SMART),
+#               arch-audit (optional, for CVEs)
 # Compatibility: CachyOS, Arch Linux (mostly any systemd Linux)
 # ============================================================
 
@@ -66,6 +67,17 @@ check_system() {
         result WARN "Running kernel" "modules for $(uname -r) missing — reboot likely needed"
     fi
 
+    # Processes still on code an upgrade replaced (restart them or reboot).
+    local stale scope=""
+    [[ $EUID -eq 0 ]] || scope=" (own processes only)"
+    stale=$(stale_procs | sort -u)
+    if [[ -z "$stale" ]]; then
+        result OK "Restart pending" "no processes on replaced libraries${scope}"
+    else
+        local n; n=$(grep -c . <<< "$stale")
+        result WARN "Restart pending" "${n}${scope}: $(head -n 8 <<< "$stale" | tr '\n' ' ')$( (( n > 8 )) && echo '…')"
+    fi
+
     # Failed systemd units.
     local failed
     failed=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}')
@@ -101,6 +113,17 @@ check_packages() {
         result OK "Available updates" "system up to date (per local db)"
     else
         result INFO "Available updates" "${upd} package(s) — run a sync to confirm"
+    fi
+
+    # On a rolling release, update age is the main CVE exposure.
+    local days
+    days=$(last_upgrade_days)
+    if [[ -z "$days" ]]; then
+        result SKIP "Last full upgrade" "none logged in pacman.log"
+    elif (( days > 14 )); then
+        result WARN "Last full upgrade" "${days} days ago — update soon"
+    else
+        result OK "Last full upgrade" "${days} day(s) ago"
     fi
 
     # Orphan packages.
@@ -224,12 +247,18 @@ check_security() {
         result INFO "Listening ports" "${pub} non-loopback listener(s) — audit-open-ports.sh"
     fi
 
-    # CVE scan, if arch-audit is around.
+    # CVE scan, if arch-audit is around. Only advisories with a published fix
+    # count: the tracker keeps many stale open entries, which
+    # hardening-check.sh sorts out.
     if command -v arch-audit &>/dev/null; then
         local vuln
-        vuln=$(arch-audit -q 2>/dev/null | grep -c .)
-        if (( vuln == 0 )); then result OK "CVE (arch-audit)" "no vulnerable packages"
-        else result WARN "CVE (arch-audit)" "${vuln} package(s) with advisories"; fi
+        if ! vuln=$(arch-audit -u -q 2>/dev/null); then
+            result SKIP "CVE (arch-audit)" "tracker unreachable — scan not performed"
+        elif [[ -z "$vuln" ]]; then
+            result OK "CVE (arch-audit)" "no published fixes pending"
+        else
+            result WARN "CVE (arch-audit)" "$(grep -c . <<< "$vuln") package(s) with a published fix — update"
+        fi
     fi
 }
 
